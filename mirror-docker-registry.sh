@@ -111,7 +111,7 @@ for repo in $(curl -s --fail "${DEST_URI}/v2/_catalog?n=100000" | jq -r ".reposi
         SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
         if [ "$SOURCE_ID" = "null" ] ; then
             echo "${SOURCE}/${repo}:${tag} Removed, deleting ${DEST}/${repo}:${tag}"
-            DCD=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "http://${DEST}/v2/${repo}/manifests/${tag}" | grep ^Docker-Content-Digest: | cut -c 24-)
+            DCD=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "http://${DEST}/v2/${repo}/manifests/${tag}" | grep ^Docker-Content-Digest: | cut -c 24- | tr -d '\r')
             curl -s --fail -X DELETE "${DEST_URI}/v2/$repo/manifests/$DCD"
             DELETES_DONE=true
         fi
