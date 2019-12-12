@@ -78,7 +78,7 @@ fi
 UPDATES_DONE=false
 for repo in $(curl -s --fail "${SOURCE_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
     LOCAL_TAGS=()
-    for tag in $(curl -s --fail "${SOURCE_URI}/v2/${repo}/tags/list" | jq -r ".tags[]"); do
+    for tag in $(curl -s --fail "${SOURCE_URI}/v2/${repo}/tags/list?n=100000" | jq -r ".tags[]"); do
         SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
         DEST_ID=$(tag_to_image_id "${DEST_URI}" "${repo}" "${tag}")
 		echo -n "$(printf "%-80s" "${SOURCE}/${repo}:${tag}") (${SOURCE_ID:7:17})"
