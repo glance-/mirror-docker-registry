@@ -28,8 +28,12 @@ function copy_docker_image
     local manifest
     manifest=$(curl -s -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${source_uri}/v2/${image}/manifests/${tag}")
 
-	jq -j '.layers[], .config | [.mediaType, " ", .size, " ", .digest, "\n"] | .[]' <<< "${manifest}" | while read -r mediaType size digest ; do
-	echo -n "Layer: ${digest:7:17} $(printf "%20s" "$size") "
+	for layer in $(jq -j '.layers[], .config | [.mediaType, "|", .size, "|", .digest, "\n"] | .[]' <<< "${manifest}") ; do
+		local mediaType=${layer/|*/}
+		local size=${layer#*|}
+		size=${size/|*/}
+		local digest=${layer/*|/}
+		echo -n "Layer: ${digest:7:17} $(printf "%20s" "$size") "
 		if curl -s -o /dev/null --fail -I "${dest_uri}/v2/${image}/blobs/$digest" ; then
 			echo "Exists"
 			# Blob already exists
@@ -48,6 +52,8 @@ function copy_docker_image
 		upload_url=${upload_url/Location: /}
 		# Upload blob
 		curl -s --fail "${source_uri}/v2/${image}/blobs/$digest" | curl -s -N --fail -L -X PUT -H "Content-Type: $mediaType" -H "Content-Lenght: $size" --data-binary @- "$upload_url&digest=$digest"
+		# And add it to our BLOBS cache for later mounting
+		BLOBS[${digest}]=$image
 		echo "done"
 	done
 
