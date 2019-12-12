@@ -35,6 +35,13 @@ function copy_docker_image
 			# Blob already exists
 			continue
 		fi
+		local blob_mount=${BLOBS[${digest}]}
+		if [ -n "$blob_mount" ] ; then
+			echo -n "mounting from $blob_mount "
+			curl -s --fail -X POST "${dest_uri}/v2/${image}/blobs/uploads/?mount=${digest}&from=${blob_mount}"
+			echo "done"
+			continue
+		fi
 		echo -n "Copying "
 		# Get upload url
 		upload_url=$(curl -s --fail -D - -o /dev/null -X POST "${dest_uri}/v2/${image}/blobs/uploads/" | grep ^Location: | tr -d '\r')
@@ -74,6 +81,23 @@ elif [[ "$DEST" = http* ]] ; then
 else
 	DEST_URI="https://${DEST}"
 fi
+
+# To decrese the amount of uploads needed, one can iterate over all
+# repositories and all tags, and build a list of which layers that exists
+# in which repositories, and use that to cross mount layers once you
+# find them in the source repo.
+
+declare -A BLOBS
+
+echo -n "Building initial blobs cache... "
+for repo in $(curl -s --fail "${DEST_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
+    for tag in $(curl -s --fail "${DEST_URI}/v2/${repo}/tags/list?n=100000" | jq -r ".tags[]"); do
+		for digest in $(curl -s --fail -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${DEST_URI}/v2/${repo}/manifests/${tag}" | jq -j '.layers[], .config | .digest, "\n"') ; do
+			BLOBS[${digest}]=$repo
+		done
+	done
+done
+echo "Done"
 
 UPDATES_DONE=false
 for repo in $(curl -s --fail "${SOURCE_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
