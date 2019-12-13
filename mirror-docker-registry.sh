@@ -8,13 +8,13 @@ set -e
 function tag_to_image_id
 {
 	local uri=$1
-    local image=$2
-    local tag=$3
+	local image=$2
+	local tag=$3
 
-    image_id=$(curl -s -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${uri}/v2/${image}/manifests/${tag}" | jq -r '.config.digest')
+	image_id=$(curl -s -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${uri}/v2/${image}/manifests/${tag}" | jq -r '.config.digest')
 
-    echo "$image_id"
-    return 0
+	echo "$image_id"
+	return 0
 }
 
 function copy_docker_image
@@ -25,8 +25,8 @@ function copy_docker_image
 	local tag=$3
 	local dest_uri=$4
 
-    local manifest
-    manifest=$(curl -s -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${source_uri}/v2/${image}/manifests/${tag}")
+	local manifest
+	manifest=$(curl -s -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${source_uri}/v2/${image}/manifests/${tag}")
 
 	for layer in $(jq -j '.layers[], .config | [.mediaType, "|", .size, "|", .digest, "\n"] | .[]' <<< "${manifest}") ; do
 		local mediaType=${layer/|*/}
@@ -97,7 +97,7 @@ declare -A BLOBS
 
 echo -n "Building initial blobs cache... "
 for repo in $(curl -s --fail "${DEST_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
-    for tag in $(curl -s --fail "${DEST_URI}/v2/${repo}/tags/list?n=100000" | jq -r ".tags[]"); do
+	for tag in $(curl -s --fail "${DEST_URI}/v2/${repo}/tags/list?n=100000" | jq -r ".tags[]"); do
 		for digest in $(curl -s --fail -H 'Accept: application/vnd.docker.distribution.manifest.v2+json' "${DEST_URI}/v2/${repo}/manifests/${tag}" | jq -j '.layers[], .config | .digest, "\n"') ; do
 			BLOBS[${digest}]=$repo
 		done
@@ -107,45 +107,45 @@ echo "Done"
 
 UPDATES_DONE=false
 for repo in $(curl -s --fail "${SOURCE_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
-    LOCAL_TAGS=()
-    for tag in $(curl -s --fail "${SOURCE_URI}/v2/${repo}/tags/list?n=100000" | jq -r ".tags[]"); do
-        SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
-        DEST_ID=$(tag_to_image_id "${DEST_URI}" "${repo}" "${tag}")
+	LOCAL_TAGS=()
+	for tag in $(curl -s --fail "${SOURCE_URI}/v2/${repo}/tags/list?n=100000" | jq -r ".tags[]"); do
+		SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
+		DEST_ID=$(tag_to_image_id "${DEST_URI}" "${repo}" "${tag}")
 		echo -n "$(printf "%-80s" "${SOURCE}/${repo}:${tag}") (${SOURCE_ID:7:17})"
-        if [ "$SOURCE_ID" != "$DEST_ID" ] ; then
-            echo -n " -> ${DEST}"
-            if [ "$DEST_ID" = "null" ] ; then
-                echo " New"
-            else
+		if [ "$SOURCE_ID" != "$DEST_ID" ] ; then
+			echo -n " -> ${DEST}"
+			if [ "$DEST_ID" = "null" ] ; then
+				echo " New"
+			else
 				UPDATES_DONE=true
-                echo " Update (was ${DEST_ID:7:17})"
-            fi
+				echo " Update (was ${DEST_ID:7:17})"
+			fi
 			# Bounce via local dockerd
-            #docker pull "${SOURCE}/${repo}:${tag}" && docker tag "${SOURCE}/${repo}:${tag}" "${DEST}/${repo}:${tag}" && docker push "${DEST}/${repo}:${tag}"
-            #LOCAL_TAGS+=("${DEST}/${repo}:${tag}" "${SOURCE}/${repo}:${tag}")
+			#docker pull "${SOURCE}/${repo}:${tag}" && docker tag "${SOURCE}/${repo}:${tag}" "${DEST}/${repo}:${tag}" && docker push "${DEST}/${repo}:${tag}"
+			#LOCAL_TAGS+=("${DEST}/${repo}:${tag}" "${SOURCE}/${repo}:${tag}")
 			# Just copy the data between the registries, not involving dockerd.
 			copy_docker_image "${SOURCE_URI}" "${repo}" "${tag}" "${DEST_URI}"
 			echo "Done!"
-        else
-            echo " already in sync (${DEST_ID:7:17})"
-        fi
+		else
+			echo " already in sync (${DEST_ID:7:17})"
+		fi
    done
    if [ "${#LOCAL_TAGS[@]}" -gt 0 ] ; then
-       docker rmi "${LOCAL_TAGS[@]}"
+	   docker rmi "${LOCAL_TAGS[@]}"
    fi
 done
 
 DELETES_DONE=false
 for repo in $(curl -s --fail "${DEST_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
-    for tag in $(curl -s --fail "${DEST_URI}/v2/${repo}/tags/list" | jq -r ".tags[]"); do
-        SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
-        if [ "$SOURCE_ID" = "null" ] ; then
-            echo "${SOURCE}/${repo}:${tag} Removed, deleting ${DEST}/${repo}:${tag}"
-            DCD=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "${DEST_URI}/v2/${repo}/manifests/${tag}" | grep ^Docker-Content-Digest: | cut -c 24- | tr -d '\r')
-            curl -s --fail -X DELETE "${DEST_URI}/v2/$repo/manifests/$DCD"
-            DELETES_DONE=true
-        fi
-    done
+	for tag in $(curl -s --fail "${DEST_URI}/v2/${repo}/tags/list" | jq -r ".tags[]"); do
+		SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
+		if [ "$SOURCE_ID" = "null" ] ; then
+			echo "${SOURCE}/${repo}:${tag} Removed, deleting ${DEST}/${repo}:${tag}"
+			DCD=$(curl -s -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "${DEST_URI}/v2/${repo}/manifests/${tag}" | grep ^Docker-Content-Digest: | cut -c 24- | tr -d '\r')
+			curl -s --fail -X DELETE "${DEST_URI}/v2/$repo/manifests/$DCD"
+			DELETES_DONE=true
+		fi
+	done
 done
 
 if $UPDATES_DONE || $DELETES_DONE ; then
