@@ -51,7 +51,15 @@ function copy_docker_image
 		upload_url=$(curl -s --fail -D - -o /dev/null -X POST "${dest_uri}/v2/${image}/blobs/uploads/" | grep ^Location: | tr -d '\r')
 		upload_url=${upload_url/Location: /}
 		# Upload blob
-		curl -s --fail "${source_uri}/v2/${image}/blobs/$digest" | curl -s -N --fail -L -X PUT -H "Content-Type: $mediaType" -H "Content-Lenght: $size" --data-binary @- "$upload_url&digest=$digest"
+		local OPT=-s
+		while ! curl -s --fail "${source_uri}/v2/${image}/blobs/$digest" | curl "$OPT" -N --fail -L -X PUT -H "Content-Type: $mediaType" -H "Content-Lenght: $size" --data-binary @- "$upload_url&digest=$digest" ; do
+			echo -n "Retrying... "
+			sleep 5
+			OPT=-v
+			# For some odd reason, upload fails sometimes, and then we need to build a new upload url.
+			#upload_url=$(curl -s --fail -D - -o /dev/null -X POST "${dest_uri}/v2/${image}/blobs/uploads/" | grep ^Location: | tr -d '\r')
+			#upload_url=${upload_url/Location: /}
+		done
 		# And add it to our BLOBS cache for later mounting
 		BLOBS[${digest}]=$image
 		echo "done"
@@ -113,9 +121,19 @@ for repo in $(curl -s --fail "${SOURCE_URI}/v2/_catalog?n=100000" | jq -r ".repo
 		DEST_ID=$(tag_to_image_id "${DEST_URI}" "${repo}" "${tag}")
 		echo -n "$(printf "%-80s" "${SOURCE}/${repo}:${tag}") (${SOURCE_ID:7:17})"
 		if [ "$SOURCE_ID" != "$DEST_ID" ] ; then
-			echo -n " -> ${DEST}"
+			#echo -n " -> ${DEST}"
 			if [ "$DEST_ID" = "null" ] ; then
-				echo " New"
+				if [[ "$tag" =~ ^ci-|^git- ]] ; then
+					# Include ci-/git- tags if they point to a not excluded image.
+					DCD=$(curl -s --fail -I -H "Accept: application/vnd.docker.distribution.manifest.v2+json" "${SOURCE_URI}/v2/${repo}/manifests/${tag}" | grep ^Docker-Content-Digest: | cut -c 24- | tr -d '\r')
+					if ! curl -s --fail -o /dev/null -I "${DEST_URI}/v2/$repo/manifests/$DCD" ; then
+						echo " Excluded"
+						continue
+					fi
+					echo " Already found in $DEST"
+				else
+					echo " New"
+				fi
 			else
 				UPDATES_DONE=true
 				echo " Update (was ${DEST_ID:7:17})"
@@ -152,4 +170,5 @@ echo "Done!"
 
 if $UPDATES_DONE || $DELETES_DONE ; then
 	echo "Target registry needs garbage collection"
+	docker exec s3reg_registry_1 /bin/registry garbage-collect /etc/docker/registry/config.yml
 fi
