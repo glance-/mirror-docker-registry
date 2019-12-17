@@ -57,8 +57,9 @@ function copy_docker_image
 			sleep 5
 			OPT=-v
 			# For some odd reason, upload fails sometimes, and then we need to build a new upload url.
-			#upload_url=$(curl -s --fail -D - -o /dev/null -X POST "${dest_uri}/v2/${image}/blobs/uploads/" | grep ^Location: | tr -d '\r')
-			#upload_url=${upload_url/Location: /}
+			# This is to retry when ceph loses our multipart upload that we created, thus we need to create a new one.
+			upload_url=$(curl -s --fail -D - -o /dev/null -X POST "${dest_uri}/v2/${image}/blobs/uploads/" | grep ^Location: | tr -d '\r')
+			upload_url=${upload_url/Location: /}
 		done
 		# And add it to our BLOBS cache for later mounting
 		BLOBS[${digest}]=$image
