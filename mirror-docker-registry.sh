@@ -136,7 +136,7 @@ for repo in $(curl -s --fail "${SOURCE_URI}/v2/_catalog?n=100000" | jq -r ".repo
 done
 
 DELETES_DONE=false
-echo -n "Deleting any extra images in ${DEST}... "
+echo "Deleting any extra images in ${DEST}... "
 for repo in $(curl -s --fail "${DEST_URI}/v2/_catalog?n=100000" | jq -r ".repositories[]"); do
 	for tag in $(curl -s --fail "${DEST_URI}/v2/${repo}/tags/list" | jq -r ".tags[]"); do
 		SOURCE_ID=$(tag_to_image_id "${SOURCE_URI}" "${repo}" "${tag}")
