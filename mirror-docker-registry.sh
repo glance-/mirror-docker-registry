@@ -171,5 +171,4 @@ echo "Done!"
 
 if $UPDATES_DONE || $DELETES_DONE ; then
 	echo "Target registry needs garbage collection"
-	docker exec s3reg_registry_1 /bin/registry garbage-collect /etc/docker/registry/config.yml
 fi
